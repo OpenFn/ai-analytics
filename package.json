@@ -1,0 +1,11 @@
+{
+  "name": "langfuse-pull",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pulls trace data from Langfuse for use in the assistant-analytics project.",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@langfuse/client": "^5.9.1"
+  }
+}
