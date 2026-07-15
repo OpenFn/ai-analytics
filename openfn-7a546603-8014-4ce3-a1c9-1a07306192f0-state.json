@@ -1,0 +1,54 @@
+{
+  "env": null,
+  "id": "7a546603-8014-4ce3-a1c9-1a07306192f0",
+  "name": "assistant-analytics",
+  "description": "Automated AI Assistant Analytics",
+  "color": null,
+  "concurrency": 2,
+  "inserted_at": "2026-07-13T14:16:18Z",
+  "updated_at": "2026-07-13T14:17:08Z",
+  "channels": {},
+  "parent_id": null,
+  "scheduled_deletion": null,
+  "history_retention_period": 365,
+  "dataclip_retention_period": 365,
+  "retention_policy": "retain_all",
+  "allow_support_access": false,
+  "collections": {},
+  "project_credentials": {},
+  "requires_mfa": false,
+  "workflows": {
+    "Weekly-Annotation-Queues": {
+      "id": "6cbe051d-d88a-4f9e-9c71-47c38df6c8aa",
+      "name": "Weekly Annotation Queues",
+      "inserted_at": "2026-07-15T17:25:42.656240Z",
+      "lock_version": 2,
+      "triggers": {
+        "cron": {
+          "enabled": true,
+          "id": "72930aea-26b2-405b-8500-687e7f6c8a44",
+          "type": "cron",
+          "cron_expression": "0 0 * * *"
+        }
+      },
+      "jobs": {
+        "Get-data": {
+          "id": "15774d7f-55cc-4fea-8d5a-1b6a6c3784b0",
+          "name": "Get data",
+          "body": "// Get some data from an API...\nget('https://www.example.com');\n",
+          "adaptor": "@openfn/language-http@latest",
+          "project_credential_id": null
+        }
+      },
+      "edges": {
+        "cron->Get-data": {
+          "enabled": true,
+          "id": "d41d3365-8907-4352-8aad-b0db75ae16f6",
+          "target_job_id": "15774d7f-55cc-4fea-8d5a-1b6a6c3784b0",
+          "source_trigger_id": "72930aea-26b2-405b-8500-687e7f6c8a44",
+          "condition_type": "always"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+name: assistant-analytics
+description: |
+  Automated AI Assistant Analytics
+collections: null
+channels: null
+credentials: null
+workflows:
+  Weekly-Annotation-Queues:
+    name: Weekly Annotation Queues
+    jobs:
+      Get-data:
+        name: Get data
+        adaptor: '@openfn/language-http@latest'
+        credential: null
+        body: |
+          // Get some data from an API...
+          get('https://www.example.com');
+
+    triggers:
+      cron:
+        type: cron
+        cron_expression: '0 0 * * *'
+        enabled: true
+    edges:
+      cron->Get-data:
+        source_trigger: cron
+        target_job: Get-data
+        condition_type: always
+        enabled: true
