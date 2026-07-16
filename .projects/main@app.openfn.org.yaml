@@ -1,6 +1,9 @@
 id: assistant-analytics
 name: assistant-analytics
 schema_version: '4.0'
+cli:
+  forked_from:
+    weekly-annotation-queues: cli:111ffd09522a
 description: Automated AI Assistant Analytics
 collections: []
 channels: []
@@ -8,8 +11,9 @@ credentials: []
 openfn:
   uuid: 7a546603-8014-4ce3-a1c9-1a07306192f0
   endpoint: https://app.openfn.org
+  alias: main
   inserted_at: 2026-07-13T14:16:18Z
-  updated_at: 2026-07-13T14:17:08Z
+  updated_at: 2026-07-16T15:05:53Z
 options:
   concurrency: 2
   history_retention_period: 365
@@ -32,6 +36,78 @@ workflows:
             condition: always
             openfn:
               uuid: d41d3365-8907-4352-8aad-b0db75ae16f6
+      - id: extract-candidates
+        name: Extract Candidates
+        expression: >
+          fn((state) => {
+            const byObs = new Map(Object.entries(state.byObs));
+            const SCORE_NAME = state.SCORE_NAME;
+
+            const selected = new Map(); // observationId -> reasons[]
+
+            function flag(observationId, reason) {
+              if (!observationId) return;
+              if (!selected.has(observationId)) selected.set(observationId, []);
+              selected.get(observationId).push(reason);
+            }
+
+            function pickExtreme(map, sel, direction) {
+              const entries = [...map.entries()].filter(([obsId]) => !sel.has(obsId));
+              if (entries.length === 0) return null;
+              entries.sort((a, b) =>
+                direction === "low" ? a[1].value - b[1].value : b[1].value - a[1].value
+              );
+              return entries[0];
+            }
+
+            function shuffle(array) {
+              const copy = [...array];
+              for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+              }
+              return copy;
+            }
+
+            for (let i = 0; i < 5; i++) {
+              const pick = pickExtreme(byObs, selected, "low");
+              if (pick) flag(pick[0], `low ${SCORE_NAME} (${pick[1].value})`);
+            }
+            for (let i = 0; i < 5; i++) {
+              const pick = pickExtreme(byObs, selected, "high");
+              if (pick) flag(pick[0], `high ${SCORE_NAME} (${pick[1].value})`);
+            }
+
+            const remaining = [...byObs.entries()].filter(([obsId]) => !selected.has(obsId));
+            const randomPicks = shuffle(remaining).slice(0, 10);
+            for (const [obsId, info] of randomPicks) {
+              flag(obsId, `random pick (${SCORE_NAME} ${info.value})`);
+            }
+
+            console.log(
+              `\nObservations selected: ${selected.size} (target up to 20: 5 low + 5 high + 10 random)`
+            );
+            for (const [id, reasons] of selected)
+              console.log(`  - ${id}: ${reasons.join(", ")}`);
+
+
+            const selectedArray = [...selected.entries()].map(([observationId, reasons]) => ({
+              observationId,
+              reasons,
+              ...byObs.get(observationId),
+            }));
+
+            return { ...state, selected: selectedArray };
+          });
+        adaptor: '@openfn/language-common@latest'
+        openfn:
+          uuid: 12ad99f0-68bb-452f-bef7-00d423a8e177
+        next:
+          post-traces:
+            disabled: false
+            condition: always
+            openfn:
+              uuid: a0de38c6-e7b7-464c-a813-2ffca85ddf2c
       - id: get-data
         name: Get data
         expression: |
@@ -40,13 +116,158 @@ workflows:
         adaptor: '@openfn/language-http@latest'
         openfn:
           uuid: 15774d7f-55cc-4fea-8d5a-1b6a6c3784b0
+        next:
+          pull-langfuse-traces:
+            disabled: false
+            condition: always
+            openfn:
+              uuid: 71c58712-c954-4d28-8a26-63a9838fecfe
+      - id: post-traces
+        name: Post Traces
+        expression: >
+          langfuse(async (state, api) => {
+            const { data: configs } = await api.scoreConfigs.get({ limit: 100 });
+
+            return { ...state, configs };
+          });
+
+
+          fn((state) => {
+            const { configs, SCORE_CONFIG_NAMES } = state;
+            const configByName = new Map(configs.map((c) => [c.name, c]));
+            const scoreConfigIds = [];
+            for (const name of SCORE_CONFIG_NAMES) {
+              const config = configByName.get(name);
+              if (!config) throw new Error(`Score config "${name}" not found.`);
+              scoreConfigIds.push(config.id);
+            }
+            console.log(`\nResolved ${scoreConfigIds.length} score configs.`);
+            return { ...state, scoreConfigIds };
+          });
+
+
+          langfuse(async (state, api) => {
+            const queue = await api.annotationQueues.createQueue({
+              name: state.QUEUE_NAME,
+              description: `Human review sample from the last 7 days (${state.fromTimestamp} to ${state.toTimestamp}): 5 lowest, 5 highest, and 10 randomly selected observations by "${state.SCORE_NAME}" score.`,
+              scoreConfigIds: state.scoreConfigIds,
+            });
+            console.log(`Created queue: id=${queue.id} name=${queue.name}`);
+
+            return { ...state, queue };
+          });
+
+
+          each(
+            $.selected,
+            langfuse(async (state, api) => {
+              const item = await api.annotationQueues.createQueueItem(state.queue.id, {
+                objectId: state.data.observationId,
+                objectType: "OBSERVATION",
+              });
+              console.log(
+                `Added ${state.data.observationId} (${state.data.reasons.join(", ")}) -> item ${item.id}`,
+              );
+
+              return state;
+            }),
+          );
+        adaptor: '@openfn/language-langfuse@latest'
+        openfn:
+          uuid: a47968cd-6a6c-44cc-ba79-0203e05e7674
+      - id: pull-langfuse-traces
+        name: Pull Langfuse Traces
+        expression: >
+          const SCORE_CONFIG_NAMES = [
+            "Was agent response reasonable",
+            "Code quality judge review",
+            "Code style judge review",
+            "Escalate for deeper review",
+            "Comment",
+          ];
+
+          const SCORE_NAME = "Code quality judge v5";
+
+
+          const randomWord = () => Math.random().toString(36).substring(2, 8);
+
+
+          const now = new Date();
+
+          const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+
+          const fromTimestamp = oneWeekAgo.toISOString();
+
+          const toTimestamp = now.toISOString();
+
+          const QUEUE_NAME = `Code judge human review queue
+          (${fromTimestamp.slice(0, 10)} to ${toTimestamp.slice(0, 10)})
+          ${randomWord()}`;
+
+
+          function toObservationMap(scores) {
+            const map = new Map();
+            for (const score of scores) {
+              if (typeof score.value !== "number") continue;
+              if (score.subject?.kind !== "observation") continue;
+              const obsId = score.subject.id;
+              const existing = map.get(obsId);
+              if (!existing || new Date(score.timestamp) > new Date(existing.timestamp)) {
+                map.set(obsId, {
+                  value: score.value,
+                  timestamp: score.timestamp,
+                  traceId: score.subject.traceId,
+                });
+              }
+            }
+            return map;
+          }
+
+
+          fn((state) => {
+            console.log(`Window: ${fromTimestamp} to ${toTimestamp}\n`);
+            return state;
+          });
+
+
+          langfuse(async (state, api) => {
+            const { data } = await api.scoresV3.getManyV3({
+              SCORE_NAME,
+              fromTimestamp,
+              toTimestamp,
+              fields: "subject",
+              limit: 100,
+            });
+
+            return { ...state, data , SCORE_NAME, fromTimestamp, toTimestamp, QUEUE_NAME, SCORE_CONFIG_NAMES };
+          });
+
+
+          fn((state) => {
+            console.log(`Fetched ${state.data.length} "${SCORE_NAME}" scores in window`);
+            const byObs = toObservationMap(state.data);
+            console.log(
+              `Observations with a "${SCORE_NAME}" score in window: ${byObs.size}`,
+            );
+            return { ...state, byObs: Object.fromEntries(byObs) };
+          });
+        adaptor: '@openfn/language-langfuse@latest'
+        openfn:
+          uuid: 4186d2ef-50f8-4a90-b0c7-9b6ead91768a
+        next:
+          extract-candidates:
+            disabled: false
+            condition: always
+            openfn:
+              uuid: dbb96bf2-90f8-475f-b85f-114d3bc42018
     history:
       - app:5e4a9aba11e9
       - app:19884d4c70b1
+      - cli:111ffd09522a
     openfn:
       uuid: 6cbe051d-d88a-4f9e-9c71-47c38df6c8aa
       inserted_at: 2026-07-15T17:25:09Z
-      updated_at: 2026-07-15T17:25:42Z
-      lock_version: 2
+      updated_at: 2026-07-16T15:05:53Z
+      lock_version: 3
     id: weekly-annotation-queues
     start: cron
