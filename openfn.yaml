@@ -1,3 +1,18 @@
 project:
   uuid: 7a546603-8014-4ce3-a1c9-1a07306192f0
   endpoint: https://app.openfn.org
+  inserted_at: 2026-07-13T14:16:18Z
+  updated_at: 2026-07-13T14:17:08Z
+  id: assistant-analytics
+  name: assistant-analytics
+  forked_from:
+    weekly-annotation-queues: app:19884d4c70b1
+workspace:
+  credentials: credentials.yaml
+  dirs:
+    projects: .projects
+    workflows: workflows
+  formats:
+    openfn: yaml
+    project: yaml
+    workflow: yaml
