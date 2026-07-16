@@ -1,0 +1,52 @@
+id: assistant-analytics
+name: assistant-analytics
+schema_version: '4.0'
+description: Automated AI Assistant Analytics
+collections: []
+channels: []
+credentials: []
+openfn:
+  uuid: 7a546603-8014-4ce3-a1c9-1a07306192f0
+  endpoint: https://app.openfn.org
+  inserted_at: 2026-07-13T14:16:18Z
+  updated_at: 2026-07-13T14:17:08Z
+options:
+  concurrency: 2
+  history_retention_period: 365
+  dataclip_retention_period: 365
+  retention_policy: retain_all
+  allow_support_access: false
+  requires_mfa: false
+workflows:
+  - name: Weekly Annotation Queues
+    steps:
+      - id: cron
+        type: cron
+        enabled: true
+        cron_expression: 0 0 * * *
+        openfn:
+          uuid: 72930aea-26b2-405b-8500-687e7f6c8a44
+        next:
+          get-data:
+            disabled: false
+            condition: always
+            openfn:
+              uuid: d41d3365-8907-4352-8aad-b0db75ae16f6
+      - id: get-data
+        name: Get data
+        expression: |
+          // Get some data from an API...
+          get('https://www.example.com');
+        adaptor: '@openfn/language-http@latest'
+        openfn:
+          uuid: 15774d7f-55cc-4fea-8d5a-1b6a6c3784b0
+    history:
+      - app:5e4a9aba11e9
+      - app:19884d4c70b1
+    openfn:
+      uuid: 6cbe051d-d88a-4f9e-9c71-47c38df6c8aa
+      inserted_at: 2026-07-15T17:25:09Z
+      updated_at: 2026-07-15T17:25:42Z
+      lock_version: 2
+    id: weekly-annotation-queues
+    start: cron

@@ -1,0 +1,16 @@
+id: weekly-annotation-queues
+name: Weekly Annotation Queues
+start: cron
+steps:
+  - id: cron
+    type: cron
+    enabled: true
+    cron_expression: 0 0 * * *
+    next:
+      get-data:
+        disabled: false
+        condition: always
+  - id: get-data
+    name: Get data
+    adaptor: '@openfn/language-http@latest'
+    expression: ./get-data.js
