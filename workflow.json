@@ -1,0 +1,32 @@
+{
+  "options": {
+    "start": "pullLangfuseTraces"
+  },
+  "workflow": {
+    "steps": [
+      {
+        "id": "pullLangfuseTraces",
+        "adaptor": "langfuse",
+        "expression": "pullLangfuseTraces.js",
+        "configuration": "tmp/langfuse-creds.json",
+        "next": {
+          "extractCandidates": true
+        }
+      },
+      {
+        "id": "extractCandidates",
+        "adaptor": "common",
+        "expression": "extractCandidates.js",
+        "next": {
+          "postTraces": true
+        }
+      },
+      {
+        "id": "postTraces",
+        "adaptor": "langfuse",
+        "expression": "postTraces.js",
+        "configuration": "tmp/langfuse-creds.json"
+      }
+    ]
+  }
+}
