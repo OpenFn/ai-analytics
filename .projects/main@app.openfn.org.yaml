@@ -1,9 +1,6 @@
 id: assistant-analytics
 name: assistant-analytics
 schema_version: '4.0'
-cli:
-  forked_from:
-    weekly-annotation-queues: cli:111ffd09522a
 description: Automated AI Assistant Analytics
 collections: []
 channels: []
@@ -11,7 +8,6 @@ credentials: []
 openfn:
   uuid: 7a546603-8014-4ce3-a1c9-1a07306192f0
   endpoint: https://app.openfn.org
-  alias: main
   inserted_at: 2026-07-13T14:16:18Z
   updated_at: 2026-07-16T15:05:53Z
 options:
@@ -26,7 +22,7 @@ workflows:
     steps:
       - id: cron
         type: cron
-        enabled: true
+        enabled: false
         cron_expression: 0 0 * * *
         openfn:
           uuid: 72930aea-26b2-405b-8500-687e7f6c8a44
@@ -264,10 +260,71 @@ workflows:
       - app:5e4a9aba11e9
       - app:19884d4c70b1
       - cli:111ffd09522a
+      - app:efcd3973fb66
     openfn:
       uuid: 6cbe051d-d88a-4f9e-9c71-47c38df6c8aa
       inserted_at: 2026-07-15T17:25:09Z
-      updated_at: 2026-07-16T15:05:53Z
-      lock_version: 3
+      updated_at: 2026-07-16T15:18:09Z
+      lock_version: 4
     id: weekly-annotation-queues
+    start: cron
+  - name: Weekly Summary Email
+    steps:
+      - id: cron
+        type: cron
+        enabled: true
+        cron_expression: 0 0 * * *
+        openfn:
+          uuid: 5b9d6353-17f6-4d85-895a-2551342439b1
+        next:
+          pull-evaluator-scores:
+            disabled: false
+            condition: always
+            openfn:
+              uuid: d2522eb3-1a3f-4129-83f9-dd4271ce187d
+      - id: pull-evaluator-scores
+        name: Pull Evaluator Scores
+        expression: |
+          // Get some data from an API...
+          get('https://www.example.com');
+        adaptor: '@openfn/language-langfuse@1.0.0'
+        openfn:
+          uuid: f900e894-26bf-4226-8498-74ccc34f018f
+        next:
+          summarize-with-claude:
+            disabled: false
+            condition: on_job_success
+            openfn:
+              uuid: 1ff80205-e7e7-489f-84e1-e302ddcf747f
+      - id: send-email
+        name: Send Email
+        expression: |
+          // Check out the Job Writing Guide for help getting started:
+          // https://docs.openfn.org/documentation/jobs/job-writing-guide
+        adaptor: '@openfn/language-gmail@3.0.0'
+        openfn:
+          uuid: fd8d19f1-3c22-4cb1-848a-52d324d67198
+      - id: summarize-with-claude
+        name: Summarize with Claude
+        expression: |
+          // Check out the Job Writing Guide for help getting started:
+          // https://docs.openfn.org/documentation/jobs/job-writing-guide
+        adaptor: '@openfn/language-claude@1.1.2'
+        openfn:
+          uuid: 9aaf6201-4652-49e9-890d-da76714a3733
+        next:
+          send-email:
+            disabled: false
+            condition: on_job_success
+            openfn:
+              uuid: 65ddfdf6-d088-4fb8-89ab-fadfffa63d5e
+    history:
+      - app:5e4a9aba11e9
+      - app:038bed02997d
+    openfn:
+      uuid: e6d49bb9-48e9-4a90-a173-0db0a8e8ab28
+      inserted_at: 2026-07-17T22:28:12Z
+      updated_at: 2026-07-17T22:30:18Z
+      lock_version: 6
+    id: weekly-summary-email
     start: cron

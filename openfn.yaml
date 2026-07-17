@@ -1,13 +1,13 @@
 project:
   uuid: 7a546603-8014-4ce3-a1c9-1a07306192f0
   endpoint: https://app.openfn.org
-  alias: main
   inserted_at: 2026-07-13T14:16:18Z
   updated_at: 2026-07-16T15:05:53Z
   id: assistant-analytics
   name: assistant-analytics
   forked_from:
-    weekly-annotation-queues: cli:111ffd09522a
+    weekly-annotation-queues: app:efcd3973fb66
+    weekly-summary-email: app:038bed02997d
 workspace:
   credentials: credentials.yaml
   dirs:

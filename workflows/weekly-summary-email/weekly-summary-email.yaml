@@ -1,0 +1,32 @@
+id: weekly-summary-email
+name: Weekly Summary Email
+start: cron
+steps:
+  - id: cron
+    type: cron
+    enabled: true
+    cron_expression: 0 0 * * *
+    next:
+      pull-evaluator-scores:
+        disabled: false
+        condition: always
+  - id: pull-evaluator-scores
+    name: Pull Evaluator Scores
+    adaptor: '@openfn/language-langfuse@1.0.0'
+    expression: ./pull-evaluator-scores.js
+    next:
+      summarize-with-claude:
+        disabled: false
+        condition: on_job_success
+  - id: send-email
+    name: Send Email
+    adaptor: '@openfn/language-gmail@3.0.0'
+    expression: ./send-email.js
+  - id: summarize-with-claude
+    name: Summarize with Claude
+    adaptor: '@openfn/language-claude@1.1.2'
+    expression: ./summarize-with-claude.js
+    next:
+      send-email:
+        disabled: false
+        condition: on_job_success

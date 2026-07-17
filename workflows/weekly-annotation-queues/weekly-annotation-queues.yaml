@@ -10,6 +10,14 @@ steps:
       get-data:
         disabled: false
         condition: always
+  - id: extract-candidates
+    name: Extract Candidates
+    adaptor: '@openfn/language-common@latest'
+    expression: ./extract-candidates.js
+    next:
+      post-traces:
+        disabled: false
+        condition: always
   - id: get-data
     name: Get data
     adaptor: '@openfn/language-http@latest'
@@ -18,23 +26,15 @@ steps:
       pull-langfuse-traces:
         disabled: false
         condition: always
+  - id: post-traces
+    name: Post Traces
+    adaptor: '@openfn/language-langfuse@latest'
+    expression: ./post-traces.js
   - id: pull-langfuse-traces
     name: Pull Langfuse Traces
     adaptor: '@openfn/language-langfuse@latest'
-    expression: ./pullLangfuseTraces.js
+    expression: ./pull-langfuse-traces.js
     next:
       extract-candidates:
         disabled: false
         condition: always
-  - id: extract-candidates
-    name: Extract Candidates
-    adaptor: '@openfn/language-common@latest'
-    expression: ./extractCandidates.js
-    next:
-      post-traces:
-        disabled: false
-        condition: always
-  - id: post-traces
-    name: Post Traces
-    adaptor: '@openfn/language-langfuse@latest'
-    expression: ./postTraces.js
