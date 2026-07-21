@@ -1,6 +1,10 @@
 id: assistant-analytics
 name: assistant-analytics
 schema_version: '4.0'
+cli:
+  forked_from:
+    weekly-annotation-queues: app:efcd3973fb66
+    weekly-summary-email: cli:95908888a169
 description: Automated AI Assistant Analytics
 collections: []
 channels: []
@@ -8,8 +12,9 @@ credentials: []
 openfn:
   uuid: 7a546603-8014-4ce3-a1c9-1a07306192f0
   endpoint: https://app.openfn.org
+  alias: main
   inserted_at: 2026-07-13T14:16:18Z
-  updated_at: 2026-07-16T15:05:53Z
+  updated_at: 2026-07-21T08:04:45Z
 options:
   concurrency: 2
   history_retention_period: 365
@@ -272,7 +277,7 @@ workflows:
     steps:
       - id: cron
         type: cron
-        enabled: true
+        enabled: false
         cron_expression: 0 0 * * *
         openfn:
           uuid: 5b9d6353-17f6-4d85-895a-2551342439b1
@@ -284,9 +289,48 @@ workflows:
               uuid: d2522eb3-1a3f-4129-83f9-dd4271ce187d
       - id: pull-evaluator-scores
         name: Pull Evaluator Scores
-        expression: |
-          // Get some data from an API...
-          get('https://www.example.com');
+        expression: >-
+          const now = new Date();
+
+          const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+
+          const fromTimestamp = oneWeekAgo.toISOString();
+
+          const toTimestamp = now.toISOString();
+
+
+          fn(state =>{
+              console.log(`Window: ${fromTimestamp} to ${toTimestamp}\n`);
+              return {...state, fromTimestamp, toTimestamp}
+          });
+
+
+          langfuse(async (state, api) => {
+            const { fromTimestamp, toTimestamp } = state;
+
+            const allScores = [];
+          {
+            let cursor;
+            while (true) {
+              const { data, meta } = await api.scoresV3.getManyV3({
+                source: "EVAL",
+                fromTimestamp,
+                toTimestamp,
+                fields: "details",
+                limit: 100,
+                cursor,
+              });
+              allScores.push(...data);
+              if (!meta.cursor) break;
+              cursor = meta.cursor;
+            }
+          }
+
+          console.log(`Total EVAL-source scores in window:
+          ${allScores.length}`);
+
+            return { ...state, allScores };
+          });
         adaptor: '@openfn/language-langfuse@1.0.0'
         openfn:
           uuid: f900e894-26bf-4226-8498-74ccc34f018f
@@ -298,17 +342,146 @@ workflows:
               uuid: 1ff80205-e7e7-489f-84e1-e302ddcf747f
       - id: send-email
         name: Send Email
-        expression: |
-          // Check out the Job Writing Guide for help getting started:
-          // https://docs.openfn.org/documentation/jobs/job-writing-guide
+        expression: >
+          const RECIPIENTS = [
+            'joe@openfn.org',
+            'hanna@openfn.org'
+          ];
+
+
+          fn((state) => {
+            const { summaryText, dateRangeLabel } = state;
+            if (!summaryText) {
+              console.log('No summaryText in state — nothing to send.');
+              return state;
+            }
+            return { ...state, RECIPIENTS, emailSubject: `AI Assistant Feedback Summary (${dateRangeLabel})`, emailBody: summaryText };
+          });
+
+
+          each($.RECIPIENTS, (state) => {
+            const { emailSubject, emailBody } = state;
+            return sendMessage({
+              to: state.data,
+              subject: emailSubject,
+              body: emailBody,
+            })(state);
+          });
         adaptor: '@openfn/language-gmail@3.0.0'
         openfn:
           uuid: fd8d19f1-3c22-4cb1-848a-52d324d67198
       - id: summarize-with-claude
         name: Summarize with Claude
-        expression: |
-          // Check out the Job Writing Guide for help getting started:
-          // https://docs.openfn.org/documentation/jobs/job-writing-guide
+        expression: >
+          const systemPrompt =
+            "You analyze quality-evaluator feedback comments about an AI assistant that helps build OpenFN workflows and job code. " +
+            "You will be given a deduplicated list of comments from non-perfect scores by one evaluator, each with how many times " +
+            "an identical comment occurred and the average score attached to it. Cluster them into recurring issue themes, then " +
+            "write ONE paragraph (3-5 sentences) summarizing the most recurrent issues, citing rough frequency where useful. " +
+            'Respond with ONLY valid JSON, no other text: {"themes": [{"label": string, "count": number, "example": string}], "summary": string}';
+
+          function dedupe(entries) {
+            const map = new Map(); // comment -> { count, values }
+            for (const { value, comment } of entries) {
+              if (!map.has(comment)) map.set(comment, { count: 0, values: [] });
+              const e = map.get(comment);
+              e.count++;
+              e.values.push(value);
+            }
+            return [...map.entries()].map(([comment, e]) => ({
+              comment,
+              count: e.count,
+              avgValue: e.values.reduce((a, b) => a + b, 0) / e.values.length,
+            }));
+          }
+
+
+          fn((state) => {
+            const { fromTimestamp, toTimestamp, allScores } = state;
+            const dateRangeLabel = `${fromTimestamp.slice(0, 10)} to ${toTimestamp.slice(0, 10)}`;
+            const dateRangeSlug = `${fromTimestamp.slice(0, 10)}_to_${toTimestamp.slice(0, 10)}`;
+
+            const byEvaluator = {}; // plain object (not Map) so it survives JSON serialization
+            for (const score of allScores) {
+              if (score.dataType !== "NUMERIC") continue;
+              if (score.value === 1) continue; // perfect score - no signal
+              if (!score.comment || !score.comment.trim()) continue;
+              if (!byEvaluator[score.name]) byEvaluator[score.name] = [];
+              byEvaluator[score.name].push({
+                value: score.value,
+                comment: score.comment.trim(),
+              });
+            }
+
+            const evaluatorNames = Object.keys(byEvaluator);
+            console.log(
+              `\nEvaluators with non-perfect commented scores: ${evaluatorNames.length}`,
+            );
+            for (const name of evaluatorNames)
+              console.log(`  - ${name}: ${byEvaluator[name].length} comments`);
+            return {
+              ...state,
+              byEvaluator: Object.entries(byEvaluator),
+              dateRangeLabel,
+              dateRangeSlug,
+            };
+          });
+
+
+          each($.byEvaluator, async (state) => {
+            const { dateRangeLabel, dateRangeSlug } = state;
+            const [evaluatorName, entries] = state.data;
+            const deduped = dedupe(entries);
+            console.log(
+              `\n=== ${evaluatorName} (${entries.length} comments, ${deduped.length} distinct) ===`,
+            );
+
+            const commentList = deduped
+              .sort((a, b) => b.count - a.count)
+              .map(
+                (d) =>
+                  `- "${d.comment}" (occurred ${d.count}x, avg score ${d.avgValue.toFixed(2)})`,
+              )
+              .join("\n");
+
+            const newState = await prompt(commentList, {
+              system: systemPrompt,
+              model: "claude-sonnet-5",
+              max_tokens: 4096,
+            })(state);
+
+            const textBlock = newState.data?.content?.find((b) => b.type === "text");
+            const raw = (textBlock?.text ?? "")
+              .trim()
+              .replace(/^```(?:json)?\n?/, "")
+              .replace(/\n?```$/, "");
+
+            let parsed;
+            try { parsed = JSON.parse(raw); }
+            catch (e) { parsed = { themes: [], summary: raw }; }
+
+            for (const t of parsed.themes ?? [])
+              console.log(`  - ${t.label} (x${t.count}): "${t.example}"`);
+            console.log(`\nSummary:\n${parsed.summary}`);
+
+            const results = { ...(state.results ?? {}), [evaluatorName]: {
+              commentCount: entries.length,
+              distinctCommentCount: deduped.length,
+              ...parsed,
+            }};
+
+            return { ...newState, results };
+          });
+
+
+          fn((state) => {
+            const { results, dateRangeLabel, dateRangeSlug } = state;
+            const summaryText = Object.entries(results ?? {})
+              .map(([name, r]) => `${name}\n${"-".repeat(name.length)}\n\n${r.summary}`)
+              .join("\n\n\n");
+            console.log(`\nBuilt summaries for ${Object.keys(results ?? {}).length} evaluator(s)`);
+            return { ...state, summaryText, dateRangeLabel, dateRangeSlug };
+          });
         adaptor: '@openfn/language-claude@1.1.2'
         openfn:
           uuid: 9aaf6201-4652-49e9-890d-da76714a3733
@@ -320,11 +493,12 @@ workflows:
               uuid: 65ddfdf6-d088-4fb8-89ab-fadfffa63d5e
     history:
       - app:5e4a9aba11e9
-      - app:038bed02997d
+      - app:87ce64a5068b
+      - cli:95908888a169
     openfn:
       uuid: e6d49bb9-48e9-4a90-a173-0db0a8e8ab28
       inserted_at: 2026-07-17T22:28:12Z
-      updated_at: 2026-07-17T22:30:18Z
-      lock_version: 6
+      updated_at: 2026-07-21T08:04:45Z
+      lock_version: 8
     id: weekly-summary-email
     start: cron
