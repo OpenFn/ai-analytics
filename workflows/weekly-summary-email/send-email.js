@@ -1,5 +1,6 @@
 const RECIPIENTS = [
-  'hunter@openfn.org',
+  'joe@openfn.org',
+  'hanna@openfn.org'
 ];
 
 fn((state) => {
