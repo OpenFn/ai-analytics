@@ -1,0 +1,35 @@
+# Code issue tags
+
+
+## Code quality issues:
+
+- - suggested_code: null
+- `import` statements
+- Top-level `async` / top level `await`
+- `alterState` used
+- `)(state)` anti-pattern
+- Lazy state evaluation, a bare `state.x`
+- `$` used in place of the `state` variable
+- Callback doesn't return state
+- Assistant inlines real credentials, e.g. API keys and passwords
+- Assistant uses raw JS loops or hand-rolled HTTP unnecessarily when an equivalent adaptor operation exists
+- Assistant hallucinates non-declared adaptor
+- Malformed JSON path
+- Top level contains something other than operaiton calls (and operation chains with `.then` / `.catch`)
+- Free-floating `const`/`let`/`var`/`function`/control-flow statements at the top level anti-pattern
+- Helper functions used improperly
+- Non JSON-serializable final-state
+- Leftover orchestration placehoder markers
+
+
+## Code style issues:
+
+- Undescriptive names
+- Excessive code comments
+- Verbose code comments
+- Irrelevant code comments
+- Non-readable code comments
+- Inconcistent code comments
+- Conversational tone code comments
+- Code structured in illogical order
+- Code has unnecessary logging

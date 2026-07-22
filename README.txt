@@ -122,31 +122,220 @@ code-judge-human-review-queue.mjs
     scripts) - confirmed both exist separately, this isn't a typo.
 
 summarize-evaluator-comments.mjs
-    Uses the Anthropic API (not just Langfuse) to summarise what
-    evaluators are actually saying in their comments, per evaluator, for
-    the last 7 days. Only looks at source=EVAL scores (i.e. automated
-    judge comments - human-review annotations from the queues above are
-    explicitly excluded) that are non-perfect and have a comment. Exact-
-    duplicate comments are collapsed into one entry with an occurrence
-    count before being sent to Claude, so recurring boilerplate isn't
-    repeated in the prompt. For each evaluator, asks Claude to cluster
-    the comments into named issue themes and write one summary paragraph.
+    Uses the Anthropic API (not just Langfuse) to build a weekly report per
+    evaluator - a summary paragraph, a bar chart, and a running CSV
+    history. Only looks at source=EVAL scores (i.e. automated judge
+    comments - human-review annotations from the queues above are
+    explicitly excluded) from the last 7 days that are non-perfect (score
+    < 1.0) and have a comment.
 
-    Outputs go in the "Evaluator summaries" subfolder (created
-    automatically if missing). Filenames include the 7-day date range
-    covered, e.g. 2026-07-02_to_2026-07-09, so different weeks' runs
-    don't overwrite each other:
-    - Evaluator summaries/evaluator-comment-summaries-<date range>.txt
-        Plain text, one paragraph per evaluator - the actual deliverable.
-    - Evaluator summaries/chart-<evaluator-name-slugified>-<date range>.svg
-        (one per evaluator) - a horizontal bar chart of how often each
-        tagged issue occurred, rendered as a hand-built SVG (no canvas/
-        image-rendering dependency - just a plain text file you can open
-        in any browser).
+    Every evaluator listed in FIXED_TAG_EVALUATORS goes through the exact
+    same pipeline - currently all four real evaluators (Code quality
+    judge v5, Workflow quality judge v3, General openfn quality judge v3,
+    General red flag judge v2). An evaluator with no matching tags file is
+    skipped with a console warning rather than silently ignored - there is
+    no free-form fallback path any more (there used to be one; it was
+    removed once the first three evaluators had tag files, to keep the
+    script to a single pipeline).
 
-    Costs real money to run (Anthropic API calls, roughly one per
-    evaluator with qualifying comments) - unlike every other script in
-    this folder, which only reads from Langfuse for free.
+    Two jobs happen per evaluator, deliberately kept independent so either
+    can be changed without touching the other:
+
+    1. TAGGED ISSUE CLASSIFICATION (drives the .svg chart and .csv row)
+       - Exact-duplicate comments are collapsed into one entry with an
+         occurrence count first (dedupe), so repeated boilerplate isn't
+         reprocessed.
+       - Deduplicated comments are split into batches of 40 and sent to
+         Claude with a FIXED list of issue tags (loaded from a plain-text
+         bullet-list file - see below), using Anthropic's tool-use
+         (structured output) rather than free-text JSON. This guarantees
+         valid JSON *syntax* and constrains each tag to the fixed
+         vocabulary via a JSON Schema enum.
+       - CAVEAT: the enum constraint is not a perfect guarantee of exact-
+         string adherence - it has been observed letting a near-miss
+         string through (e.g. a dropped backtick), and separately, the
+         whole response has been observed coming back double-encoded (a
+         JSON *string* containing the real object, instead of the object
+         itself). Both are handled defensively: tags are normalized
+         (case/punctuation/whitespace-insensitive) and matched back to the
+         real vocabulary string before counting, and a double-encoded
+         response is detected and re-parsed rather than treated as a
+         failure.
+       - A comment can get multiple tags, but never the same tag twice. A
+         special tag, "No issues found" (added in code - not part of any
+         tags file), is mutually exclusive with every other tag: if a real
+         issue was also found on the same comment, "No issues found" is
+         dropped rather than kept alongside it.
+       - Counts are tallied in plain JS code, not self-reported by Claude -
+         weighted by each comment's true occurrence count, not just 1 per
+         distinct comment - so they can't silently drift the way an LLM
+         doing its own arithmetic over a long list could.
+
+    2. SUMMARY PARAGRAPH (writeSummaryParagraph - shared by every
+       evaluator, fully decoupled from job 1 above)
+       - Reads the full deduplicated comment list (text + occurrence count
+         + average score) and asks Claude to write ONE free-form
+         paragraph, with no JSON/tag constraint at all. This was chosen
+         deliberately over feeding Claude the tag+count summary from job 1
+         - it produced better, more specific analysis when it could read
+         the actual comments rather than a pre-digested summary.
+       - Safety valve for a very high-volume week: if there are more than
+         300 distinct comments, a random sample of 300 is used instead of
+         all of them, so the prompt can't grow unboundedly. Every week so
+         far has been well under this.
+
+    Outputs go in the "tmp/Evaluator summaries" subfolder (created
+    automatically if missing):
+    - tmp/Evaluator summaries/evaluator-comment-summaries-<date range>.txt
+        Plain text, one paragraph per evaluator (job 2). Filename includes
+        the 7-day date range, e.g. 2026-07-07_to_2026-07-14, so different
+        weeks' runs don't overwrite each other.
+    - tmp/Evaluator summaries/chart-<evaluator-name-slugified>-<date range>.svg
+        (one per evaluator, job 1) - a horizontal bar chart of the top 15
+        tagged issues by frequency (tags with zero hits that week are
+        omitted, not shown as empty bars). Each bar shows the absolute
+        count and what percentage of that week's total comments it
+        represents, e.g. "13 (6.4%)". A note at the top states the total
+        comment count and the "<1.0" threshold. Bars are colored by
+        category: green for "No issues found" and for any tag listed in
+        the BENIGN_TAGS constant (currently just "Assistant pushed back
+        and asked a reasonable and necessary clarifying question", for
+        General red flag judge v2 - a tag that gets applied when something
+        was flagged but the underlying behaviour was actually fine, not a
+        real red flag), grey for "suggested_code: null" (Code quality
+        judge v5 only - means no code was present to review at all,
+        distinct from "reviewed and clean"), red for every genuine issue
+        tag. Rendered as a hand-built SVG (no canvas/image-rendering
+        dependency - just a plain text file you can open in any browser).
+        Filename also date-range-stamped.
+    - tmp/Evaluator summaries/<evaluator-name-slugified>-summary.csv
+        (one per evaluator, job 1) - APPENDS one row per run rather than
+        overwriting, so this becomes a growing week-over-week history you
+        can export/chart elsewhere. NOT date-stamped in the filename,
+        since it's a running history rather than a per-week snapshot.
+        Columns: startDate, endDate, total (comment count that week), then
+        ONE COLUMN PER TAG in that evaluator's full vocabulary - not just
+        the chart's top 15. The CSV is meant to be complete rather than
+        easy to read, so every tag always gets a column, even in weeks it
+        had zero hits. The header row is written automatically the first
+        time the file is created.
+
+    Issue tag vocabularies (plain text, one tag per bullet line; blank
+    lines and any "#"/"##" heading lines are ignored):
+    - issue-tags-for-code-judge-comment-summariser.txt (Code quality
+      judge v5) - 26 tags, plus "suggested_code: null" as its first entry
+      (meaning no code was present to review at all).
+    - issue-tags-for-workflow-judge-comment-summariser.txt (Workflow
+      quality judge v3) - 26 tags, mostly structural/YAML validation rules.
+    - issue-tags-for-general-openfn-judge-comment-summariser.txt (General
+      openfn quality judge v3) - 10 tags, broader/higher-level categories.
+    - issue-tags-for-general-red-flag-judge-comment-summariser.txt
+      (General red flag judge v2) - 16 genuine red-flag tags (errors, user
+      frustration, refusals, mishandled data, etc.) plus one tag under a
+      separate "Non red flag issues" heading for a benign case (see
+      BENIGN_TAGS above). Tags in this file deliberately have NO trailing
+      punctuation - an earlier version ended each tag with a full stop,
+      and the model's classification responses inconsistently included or
+      dropped that final period, silently failing to match the vocabulary
+      and getting counted as "Unrecognized tag" instead (the tag-matching
+      normalization handles backticks/quotes/whitespace but not trailing
+      punctuation - see "WHAT WE LEARNED" below). Fixed by removing the
+      periods from the vocabulary file itself.
+    Edit these files directly to change what an evaluator can be tagged
+    with - no code changes needed, each vocabulary is loaded fresh every
+    run. To add another evaluator, add a new tags file plus one entry in
+    FIXED_TAG_EVALUATORS at the top of the script; everything else (chart,
+    CSV, paragraph) follows automatically.
+
+    Costs real money to run (Anthropic API calls: several batched
+    classification calls per evaluator, plus one paragraph call each) -
+    unlike every other script in this folder, which only reads from
+    Langfuse for free.
+
+observations-by-hour.mjs
+    Pulls the startTime of every real observation (job_chat, workflow_chat,
+    global_chat, anthropic.chat - filtered on the parent trace's tags, not
+    on traceName, see "WHAT WE LEARNED" below) across ALL available
+    history (no time window), buckets them by UTC hour-of-day (0-23), and
+    divides each bucket's total by the number of days spanned by the data.
+    The result is "average observations per day, for that hour", not a raw
+    all-time total - useful for seeing when the assistant actually gets
+    used across a day without the answer just growing forever as more
+    history accumulates.
+
+    Output: tmp/observations-by-hour-of-day.svg - one bar per UTC hour,
+    each labelled with its average count, hand-built SVG.
+
+state-antipattern-frequency-by-week.mjs
+    Counts literal occurrences of a specific string (currently ")(state)",
+    a known OpenFn anti-pattern - see TARGET_STRING/TARGET_LABEL at the top
+    of the file, change both to track a different pattern instead) inside
+    assistant-generated output, across ALL available history, bucketed
+    into rolling 7-day weeks measured from the earliest observation in the
+    dataset (not calendar weeks). Only searches GENERATION-type
+    observations (the actual LLM completions) within real conversation
+    traces, deliberately excluding wrapper SPAN/EVENT observations so the
+    same text isn't double-counted if it gets echoed through a parent
+    span. Counts every occurrence, not just whether a response contains
+    the string at least once - a response with the pattern three times
+    counts as three, not one.
+
+    The search is a plain substring match, so it runs directly against the
+    raw JSON-encoded "output" field without needing to parse it first
+    (unlike a line-anchored search - see "WHAT WE LEARNED" below for why
+    that would behave differently).
+
+    Output: tmp/state-antipattern-frequency-by-week.svg - one bar per
+    week, including weeks with zero hits so the timeline stays continuous,
+    each labelled with its count and date (rotated 45 degrees to fit).
+
+analysis-by-version.mjs
+    Tracks how evaluator scores, latency, and conversation-type mix change
+    across assistant releases - the "release" value Langfuse attaches to
+    every trace/observation, confirmed to be exactly the same value as
+    resourceAttributes.langfuse.release in the raw OpenTelemetry metadata
+    (so there's no need to dig into metadata directly; trace.release
+    already has it). Pulls every job_chat/workflow_chat/global_chat trace
+    across ALL available history (no time window; anthropic.chat is
+    deliberately excluded here, unlike the two scripts above), plus every
+    score from a fixed list of evaluators (EVALUATORS array near the top -
+    currently General openfn quality judge v3, Workflow quality judge v3,
+    Code quality judge v5, General red flag judge v2), joined back to
+    their trace via score.subject.traceId. Traces with no release value
+    recorded (mostly everything before ~2026-06-29, when this metadata
+    started being set) are skipped entirely, since they can't be placed on
+    a version axis.
+
+    Outputs, both in tmp/:
+    - scores-by-assistant-version.csv
+        One row per trace: traceId, sessionId, startTime, latency,
+        traceType, release, then an "<evaluator> - observation ID / score
+        / comment" triplet per evaluator (blank if that evaluator didn't
+        score that trace). Each evaluator gets its OWN observation ID
+        column rather than one shared column, because a trace can be
+        scored by some evaluators and not others, and different
+        evaluators can score different observations within the same
+        trace. APPENDS new rows on each run rather than overwriting -
+        checks each candidate trace ID against the existing file's raw
+        text before appending, so running the script more than once never
+        creates duplicate rows for the same trace. Because it's
+        append-only, adding a new evaluator to the EVALUATORS array
+        widens the column set for future rows but does NOT retroactively
+        add columns to rows already on disk - if that happens, the fix is
+        a one-off full regeneration (delete the CSV, then re-run) so
+        every row ends up on the same schema; this is what was done when
+        "General red flag judge v2" was added.
+    - scores-by-assistant-version.svg
+        Always rebuilt in full from the freshly-fetched dataset,
+        independent of what's already in the CSV. One scatter-plot panel
+        per evaluator (a jittered dot per scored trace, plus a dashed
+        mean line and "avg X.XX" label per version), a "Latency (seconds)"
+        panel in the same style, and a "Trace type mix by version" table
+        at the bottom showing the count and percentage of
+        job_chat/workflow_chat/global_chat for each version. Versions are
+        ordered left-to-right by first-seen date, not alphabetically. The
+        score panels use a fixed 0-1 y-axis; the latency panel auto-fits
+        its y-axis to the data.
 
 .env / .env.example
     .env holds your real API keys and is never committed to git (see
@@ -195,3 +384,31 @@ WHAT WE LEARNED ALONG THE WAY (worth knowing before changing anything)
   occasionally produces a small JSON syntax slip (e.g. one stray
   character). summarize-evaluator-comments.mjs strips code fences and
   retries once on a parse failure to handle this.
+- The observations-v2 endpoint's own "traceName" field is unreliable - it
+  comes back empty for real conversation observations even though the
+  parent trace has a proper "name" (confirmed by cross-checking
+  trace.list directly for the same trace). The trace's "tags" field is
+  populated correctly on every observation though, so any script that
+  needs to filter observations.getMany by conversation type should filter
+  on tags (arrayOptions, "any of") instead of traceName.
+- The raw "output" field on an observation is JSON text, and any real
+  newlines inside nested generated code are encoded as the two characters
+  "\" + "n" per the JSON spec, not an actual newline byte. A line-anchored
+  regex (^ with the "m" flag) run directly against the raw field will
+  never match anything, because there are no real newline characters in
+  it at all - only backslash-n pairs. Fix: JSON.parse the field first and
+  pull out every string value (which restores genuine newlines within
+  each string) before running a line-anchored search. Plain substring
+  searches (no line-anchoring, like state-antipattern-frequency-by-
+  week.mjs uses) are unaffected by this and can run directly against the
+  raw text.
+- Langfuse's own automated evaluation rules (the LLM-as-judge/code
+  evaluators that score new data live) can only target "observation" or
+  "experiment" - there's no "trace" option in the API
+  (EvaluationRuleTarget only allows those two values), which matches what
+  we've seen in practice: every evaluator score in this project has
+  subject.kind === "observation", never "trace". The score-creation API
+  itself is more flexible than that (CreateScoreRequest accepts a
+  traceId, sessionId, observationId, or datasetRunId independently), so a
+  trace-level score CAN be written by hand via the API - it just can't
+  happen automatically the way observation-level evaluator scoring does.

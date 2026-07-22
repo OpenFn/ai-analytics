@@ -1,0 +1,27 @@
+# General red flag issue tags
+
+## Red flag issues
+
+- Status: ERROR or output is undefined
+- Obvious user frustration
+- User swearing at or insulting the assistant
+- Assistant did not return specific concrete output when it should have
+- Assistant erroneously returned the incorrect output or a placeholder output
+- Off-topic assistant response
+- Assistant did not understand the user's request
+- Assistant mishandled sensitive data
+- Assistant apologised and admitted to making a mistake
+- Assistant refused the user's request because it was impossible
+- Assistant refused the user's request because it was unethical
+- User attempt to jailbreak the assistant model
+- Assistant cannot see logs
+- Assistant requested additional data when it was already given sufficient context
+- Assistant showed confusion/inconcistency
+- Assistant can't access user workflow
+
+
+# Non red flag issues
+
+- Assistant pushed back and asked a reasonable and necessary clarifying question
+
+

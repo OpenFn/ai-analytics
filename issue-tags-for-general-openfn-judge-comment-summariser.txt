@@ -1,0 +1,12 @@
+# General OpenFN quality issue tags
+
+- Empty 'id' field in job/trigger/edge
+- `body` missing both real adaptor code and the canonical empty-job placeholder
+- Leftover generation placeholder artifacts
+- Invalid characters in job names or edge/target/key references
+- Modification of a workflow being edited by a user without them asking
+- Returned YAML parses as invalid YAML
+- Can't find workflow YAML
+- Failure to access existing workflow context
+- Deferred/omitted actual job code despite explicit request for implementation
+- Overly passive response to ambiguous requests instead of inferring reasonable action
