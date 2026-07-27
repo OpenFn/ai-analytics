@@ -1,0 +1,28 @@
+# Issue tags for Workflow quality
+
+- Looping workflow
+- Output doesn'r parse as valid YAML
+- job/trigger/edge has empty `id` field
+- `body` missing both real adaptor code and the canonical empty-job placeholder
+- Leftover generation placeholder artifacts
+- Invalid characters in job names or edge/target/key references
+- Non-unique job names
+- job name over 100 characters
+- Modification of a workflow being edited by a user without them asking
+- Not exactly one trigger per workflow
+- Invalid cron_expression for cron trigger
+- More than one edge connected to the trigger
+- Invalid input state on cron trigger
+- One step per clearly distinct action
+- Adaptor choice doesn't match the system named by the user
+- `http` adaptor used when a dedicated specific adaptor existed
+- Assistant hallucinates non-declared adaptor
+- Non-descriptive or non-unique step names
+- Invalid edge condition_type
+- Invalid `condition_expression` for `js_expression`
+- Edges merge or wait when multiple edges target the same step
+- Workflow shape doesn't reflect user's described process
+- Discover-only request produces new YAML
+- Workflow with self-edge or back-edge to previous step
+- Steps added the user didn't ask for
+- Genuinely distinct integrations collapsed into one step
