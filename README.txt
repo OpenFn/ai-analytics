@@ -127,7 +127,24 @@ summarize-evaluator-comments.mjs
     history. Only looks at source=EVAL scores (i.e. automated judge
     comments - human-review annotations from the queues above are
     explicitly excluded) from the last 7 days that are non-perfect (score
-    < 1.0) and have a comment.
+    < 1.0) and have a comment. Defaults to "the last 7 days"; set FROM_DATE
+    and TO_DATE env vars (YYYY-MM-DD) to run against a different window
+    instead, e.g. for backfilling old weeks - normal usage is unaffected
+    since the defaults kick in whenever they're unset.
+
+    The "last 7 days" window is measured against the scored OBSERVATION's
+    startTime, NOT the score's own timestamp. A score's timestamp only
+    records when the judge ran, which is not the same thing as when the
+    conversation happened - for live evaluation the two are close enough
+    to not matter, but a backfilled/batched score can be timestamped "now"
+    while judging a conversation from months earlier. Confirmed directly:
+    a full backfill of "General red flag judge v2" produced 710 scores all
+    timestamped within a single ~20-hour window, despite scoring
+    conversations going back to May. To handle this, the script first
+    builds a map of every real observation's startTime (fetched once,
+    across all history), pulls ALL EVAL-source scores with no time filter
+    at all, then keeps only the ones whose underlying observation's
+    startTime falls in the target window - see "WHAT WE LEARNED" below.
 
     Every evaluator listed in FIXED_TAG_EVALUATORS goes through the exact
     same pipeline - currently all four real evaluators (Code quality
@@ -251,6 +268,15 @@ summarize-evaluator-comments.mjs
     classification calls per evaluator, plus one paragraph call each) -
     unlike every other script in this folder, which only reads from
     Langfuse for free.
+
+combine-last-3-weeks.mjs
+    Small companion script - reads the last 3 rows straight out of
+    summarize-evaluator-comments.mjs's per-evaluator CSV history (currently
+    hardcoded to General red flag judge v2 and Code quality judge v5) and
+    sums the tag columns to produce a 3-week combined chart in the same
+    style as the weekly ones. Pure CSV processing, no Langfuse or Anthropic
+    API calls, so it's free and instant. Output:
+    tmp/Evaluator summaries/chart-<evaluator-name-slugified>-last-3-weeks.svg
 
 observations-by-hour.mjs
     Pulls the startTime of every real observation (job_chat, workflow_chat,
@@ -412,3 +438,24 @@ WHAT WE LEARNED ALONG THE WAY (worth knowing before changing anything)
   traceId, sessionId, observationId, or datasetRunId independently), so a
   trace-level score CAN be written by hand via the API - it just can't
   happen automatically the way observation-level evaluator scoring does.
+- A score's own timestamp records when the JUDGE RAN, not when the
+  conversation it's scoring happened - don't assume the two are close
+  together. They usually are for live evaluation, but a backfilled or
+  batched score can be written "now" while judging something from months
+  ago. Confirmed directly in this project: after backfilling "General red
+  flag judge v2" onto old conversations, all 710 resulting scores had
+  timestamps clustered in a single ~20-hour window, despite scoring
+  conversations going back to May. summarize-evaluator-comments.mjs used
+  to window its weekly pull by filtering the scores API on the score's own
+  fromTimestamp/toTimestamp, which silently mixed in scores for
+  conversations from completely different weeks (and, after backfills,
+  excluded scores for genuinely in-window conversations too) - re-running
+  an already-processed week under the corrected logic changed its numbers
+  substantially, not just for the backfilled evaluator but for the others
+  too, implying broader recent re-scoring activity than just the one
+  evaluator. Fixed by resolving each score back to its underlying
+  observation's startTime (via a one-off map of every real observation's
+  startTime, built at the start of the run) and windowing on THAT instead
+  - see summarize-evaluator-comments.mjs above for the mechanics. Any
+  script that windows scores by date should window by the scored
+  observation/trace's own timestamp, never the score's timestamp.

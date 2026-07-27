@@ -336,34 +336,65 @@ async function writeSummaryParagraph(deduped, evaluatorName) {
   return (textBlock?.text ?? "").trim();
 }
 
+// Defaults to "the last 7 days" - set FROM_DATE/TO_DATE (YYYY-MM-DD) to run
+// against a different window instead, e.g. for backfilling old weeks.
 const now = new Date();
 const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
-const fromTimestamp = oneWeekAgo.toISOString();
-const toTimestamp = now.toISOString();
+const fromTimestamp = process.env.FROM_DATE ? new Date(process.env.FROM_DATE).toISOString() : oneWeekAgo.toISOString();
+const toTimestamp = process.env.TO_DATE ? new Date(process.env.TO_DATE).toISOString() : now.toISOString();
 console.log(`Window: ${fromTimestamp} to ${toTimestamp}\n`);
 
 // ============================================================
-// 1. Pull every automated-evaluator score in the window (source=EVAL only,
-//    so human-review annotations from our own queues aren't mixed in).
+// 1. Pull every automated-evaluator score (source=EVAL only, so human-review
+//    annotations from our own queues aren't mixed in), then window by the
+//    SCORED OBSERVATION'S startTime - not the score's own timestamp.
+//
+//    A score's timestamp is just when the judge ran, not when the
+//    conversation happened. For live evaluation the two are basically the
+//    same, but a backfilled/batched score can be timestamped "now" while
+//    scoring a conversation from months ago - confirmed directly against
+//    this project's "General red flag judge v2" backfill, where every
+//    score had a timestamp within a single ~20-hour window despite scoring
+//    conversations going back to May. So we fetch scores with no time
+//    filter at all, and instead resolve each one's underlying observation
+//    startTime to decide which week it belongs to.
 // ============================================================
+const REAL_TRACE_TAGS = ["job_chat", "workflow_chat", "global_chat", "anthropic.chat"];
+
+const observationStartTimes = new Map(); // observationId -> startTime
+{
+  let cursor;
+  const filter = JSON.stringify([{ type: "arrayOptions", column: "tags", operator: "any of", value: REAL_TRACE_TAGS }]);
+  while (true) {
+    const { data, meta } = await langfuse.api.observations.getMany({ filter, fields: "core", limit: 1000, cursor });
+    for (const obs of data) observationStartTimes.set(obs.id, obs.startTime);
+    if (!meta.cursor) break;
+    cursor = meta.cursor;
+  }
+}
+
 const allScores = [];
 {
   let cursor;
   while (true) {
     const { data, meta } = await langfuse.api.scoresV3.getManyV3({
       source: "EVAL",
-      fromTimestamp,
-      toTimestamp,
-      fields: "details",
+      fields: "details,subject",
       limit: 100,
       cursor,
     });
-    allScores.push(...data);
+    for (const s of data) {
+      if (s.subject?.kind !== "observation") continue;
+      const startTime = observationStartTimes.get(s.subject.id);
+      if (!startTime) continue; // scored observation isn't a real conversation (or wasn't found) - skip
+      if (startTime < fromTimestamp || startTime >= toTimestamp) continue;
+      allScores.push(s);
+    }
     if (!meta.cursor) break;
     cursor = meta.cursor;
   }
 }
-console.log(`Total EVAL-source scores in window: ${allScores.length}`);
+console.log(`Total EVAL-source scores in window (by scored conversation's date, not score date): ${allScores.length}`);
 
 // ============================================================
 // 2. Group by evaluator name, filter to non-perfect numeric scores with a comment
