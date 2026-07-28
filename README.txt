@@ -50,7 +50,7 @@ build-scores-export.mjs
     or category) and <evaluator name>_comment (the judge's reasoning).
 
 these scripts make graphs (not very well)/observation-counts-per-trace.mjs
-    A separate, lighter-weight script, kept in its own subfolder along with
+    [This is outdated and can be ignored] A separate, lighter-weight script, kept in its own subfolder along with
     its outputs since it exists to feed charts. Answers "how many actual
     steps (observations) does each conversation have?" - regardless of
     whether any of those steps were ever scored by an evaluator. Also
@@ -81,7 +81,7 @@ these scripts make graphs (not very well)/observation-counts-per-trace.mjs
 
 
 human-review-queue-old.mjs
-    An annotation-queue builder built for reviewing newly backfilled/updated evaluator prompts (e.g.
+    [This one isnt currently in use because the current langfuse plan has a limit of no more than 3 annotation queues at one time] An annotation-queue builder built for reviewing newly backfilled/updated evaluator prompts (e.g.
     "Code quality judge v5", "Workflow quality judge v3", "General openfn
     quality judge v3") rather than general triage. Looks at the last 7
     days and selects 20 observations total:
@@ -102,7 +102,7 @@ human-review-queue-old.mjs
     reading the queue back via the API after creating it).
 
 code-judge-human-review-queue.mjs
-    A narrower successor to human-review-queue-old.mjs, scoped to just one
+    [This has been adapted into an OpenFN workflow] A narrower successor to human-review-queue-old.mjs, scoped to just one
     evaluator: every observation that has a "Code quality judge v5" score
     in the last 7 days (no restriction by trace type needed - that score
     only ever attaches to job_chat observations anyway). Selection is 5
@@ -122,7 +122,7 @@ code-judge-human-review-queue.mjs
     scripts) - confirmed both exist separately, this isn't a typo.
 
 summarize-evaluator-comments.mjs
-    Uses the Anthropic API (not just Langfuse) to summarise what
+    [This one is important and has been adapted into an OpenFN workflow] Uses the Anthropic API (not just Langfuse) to summarise what
     evaluators are actually saying in their comments, per evaluator, for
     the last 7 days. Only looks at source=EVAL scores (i.e. automated
     judge comments - human-review annotations from the queues above are
