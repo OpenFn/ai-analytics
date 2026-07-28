@@ -3,18 +3,27 @@ name: assistant-analytics
 schema_version: '4.0'
 cli:
   forked_from:
-    weekly-annotation-queues: app:efcd3973fb66
-    weekly-summary-email: cli:95908888a169
+    weekly-annotation-queues: cli:7e8f9b63228e
+    weekly-summary-email: cli:a81851724db9
 description: Automated AI Assistant Analytics
 collections: []
 channels: []
-credentials: []
+credentials:
+  - uuid: 3ef89bf4-f161-4ca1-966e-0c30af6d1c7c
+    name: Langfuse for analytics
+    owner: jclark@openfn.org
+  - uuid: 4a9c4e4c-1e0f-4161-953f-28bce430d6e0
+    name: Claude assistant analytics
+    owner: jclark@openfn.org
+  - uuid: 09ac7b5c-14bb-4772-b08e-6177dcb342db
+    name: Assistant anyltics gmail joe
+    owner: jclark@openfn.org
 openfn:
   uuid: 7a546603-8014-4ce3-a1c9-1a07306192f0
   endpoint: https://app.openfn.org
   alias: main
   inserted_at: 2026-07-13T14:16:18Z
-  updated_at: 2026-07-21T08:04:45Z
+  updated_at: 2026-07-28T13:52:00Z
 options:
   concurrency: 2
   history_retention_period: 365
@@ -27,8 +36,8 @@ workflows:
     steps:
       - id: cron
         type: cron
-        enabled: false
-        cron_expression: 0 0 * * *
+        enabled: true
+        cron_expression: 00 00 * * 01
         openfn:
           uuid: 72930aea-26b2-405b-8500-687e7f6c8a44
         next:
@@ -36,7 +45,7 @@ workflows:
             disabled: false
             condition: always
             openfn:
-              uuid: d41d3365-8907-4352-8aad-b0db75ae16f6
+              uuid: 010ca7af-1a1e-42d8-a3c6-fed361c069ea
       - id: extract-candidates
         name: Extract Candidates
         expression: >
@@ -102,13 +111,13 @@ workflows:
           });
         adaptor: '@openfn/language-common@latest'
         openfn:
-          uuid: 12ad99f0-68bb-452f-bef7-00d423a8e177
+          uuid: 4186d2ef-50f8-4a90-b0c7-9b6ead91768a
         next:
           post-traces:
             disabled: false
             condition: always
             openfn:
-              uuid: a0de38c6-e7b7-464c-a813-2ffca85ddf2c
+              uuid: dbb96bf2-90f8-475f-b85f-114d3bc42018
       - id: get-data
         name: Get data
         expression: |
@@ -116,13 +125,13 @@ workflows:
           get('https://www.example.com');
         adaptor: '@openfn/language-http@latest'
         openfn:
-          uuid: 15774d7f-55cc-4fea-8d5a-1b6a6c3784b0
+          uuid: df4ec50c-906e-422c-a594-23bdecbdde9c
         next:
           pull-langfuse-traces:
             disabled: false
             condition: always
             openfn:
-              uuid: 71c58712-c954-4d28-8a26-63a9838fecfe
+              uuid: eadd224d-8ef9-4c7f-a08c-20b5c3dc751f
       - id: post-traces
         name: Post Traces
         expression: >
@@ -175,7 +184,8 @@ workflows:
           );
         adaptor: '@openfn/language-langfuse@latest'
         openfn:
-          uuid: a47968cd-6a6c-44cc-ba79-0203e05e7674
+          uuid: 12ad99f0-68bb-452f-bef7-00d423a8e177
+        configuration: jclark@openfn.org|Langfuse for analytics
       - id: pull-langfuse-traces
         name: Pull Langfuse Traces
         expression: >
@@ -254,23 +264,25 @@ workflows:
           });
         adaptor: '@openfn/language-langfuse@latest'
         openfn:
-          uuid: 4186d2ef-50f8-4a90-b0c7-9b6ead91768a
+          uuid: 15774d7f-55cc-4fea-8d5a-1b6a6c3784b0
+        configuration: jclark@openfn.org|Langfuse for analytics
         next:
           extract-candidates:
             disabled: false
             condition: always
             openfn:
-              uuid: dbb96bf2-90f8-475f-b85f-114d3bc42018
+              uuid: 71c58712-c954-4d28-8a26-63a9838fecfe
     history:
       - app:5e4a9aba11e9
       - app:19884d4c70b1
       - cli:111ffd09522a
-      - app:efcd3973fb66
+      - app:91c097d1532d
+      - cli:7e8f9b63228e
     openfn:
       uuid: 6cbe051d-d88a-4f9e-9c71-47c38df6c8aa
       inserted_at: 2026-07-15T17:25:09Z
-      updated_at: 2026-07-16T15:18:09Z
-      lock_version: 4
+      updated_at: 2026-07-28T13:52:00Z
+      lock_version: 18
     id: weekly-annotation-queues
     start: cron
   - name: Weekly Summary Email
@@ -334,6 +346,7 @@ workflows:
         adaptor: '@openfn/language-langfuse@1.0.0'
         openfn:
           uuid: f900e894-26bf-4226-8498-74ccc34f018f
+        configuration: jclark@openfn.org|Langfuse for analytics
         next:
           summarize-with-claude:
             disabled: false
@@ -370,6 +383,7 @@ workflows:
         adaptor: '@openfn/language-gmail@3.0.0'
         openfn:
           uuid: fd8d19f1-3c22-4cb1-848a-52d324d67198
+        configuration: jclark@openfn.org|Assistant anyltics gmail joe
       - id: summarize-with-claude
         name: Summarize with Claude
         expression: >
@@ -485,6 +499,7 @@ workflows:
         adaptor: '@openfn/language-claude@1.1.2'
         openfn:
           uuid: 9aaf6201-4652-49e9-890d-da76714a3733
+        configuration: jclark@openfn.org|Claude assistant analytics
         next:
           send-email:
             disabled: false
@@ -495,10 +510,12 @@ workflows:
       - app:5e4a9aba11e9
       - app:87ce64a5068b
       - cli:95908888a169
+      - app:c6db493c4a6a
+      - cli:a81851724db9
     openfn:
       uuid: e6d49bb9-48e9-4a90-a173-0db0a8e8ab28
       inserted_at: 2026-07-17T22:28:12Z
-      updated_at: 2026-07-21T08:04:45Z
-      lock_version: 8
+      updated_at: 2026-07-28T13:52:00Z
+      lock_version: 13
     id: weekly-summary-email
     start: cron
