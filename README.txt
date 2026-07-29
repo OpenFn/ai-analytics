@@ -108,18 +108,43 @@ code-judge-human-review-queue.mjs
     only ever attaches to job_chat observations anyway). Selection is 5
     lowest-scoring + 5 highest-scoring + 10 more picked at random from
     whatever's left in the pool (up to 20 total; fewer if the pool is
-    smaller than that). Creates a new queue named "Code judge human
-    review queue (<date range>)" - e.g. "...(2026-07-06 to 2026-07-13)" -
-    with the date range baked into the name so re-running this weekly
-    never collides with a previous run's queue (unlike weekly-review-
-    queue.mjs and human-review-queue-old.mjs, which reuse a fixed name and
-    will error with "A queue with this name already exists" if the
-    previous one hasn't been deleted first). Five score configs are
-    attached, in this order: "Was agent response reasonable", "Code
-    quality judge review", "Code style judge review", "Escalate for
-    deeper review", "Comment". Note "Comment" (singular) is a real,
-    distinct score config from "Comments" (plural, used by the other
-    scripts) - confirmed both exist separately, this isn't a typo.
+    smaller than that).
+
+    Adds to a single ongoing queue named "Code judge human review" (no
+    date range in the name) rather than creating a new dated queue every
+    run. Before creating anything, it pages through every queue
+    (listQueues has no server-side name filter, so this is a client-side
+    match) looking for one with that exact name, and reuses it if found -
+    createQueue only gets called the first time. Before adding items, it
+    also pages through the queue's existing items (listQueueItems) and
+    skips any observation ID already present, so re-running the script -
+    or the same observation landing in the pool twice across overlapping
+    7-day windows - can't create duplicate queue items. If the queue gets
+    deleted in the Langfuse UI between runs (e.g. manual cleanup), the
+    next run just quietly recreates it fresh - this is normal, not an
+    error; confirmed directly when testing this (see "WHAT WE LEARNED"
+    below). Five score configs are attached, but only when the queue is
+    newly created (score configs are fixed at creation time, not
+    per-item): "Was agent response reasonable", "Code quality judge
+    review", "Code style judge review", "Escalate for deeper review",
+    "Comment". Note "Comment" (singular) is a real, distinct score config
+    from "Comments" (plural, used by human-review-queue-old.mjs) -
+    confirmed both exist separately, this isn't a typo.
+
+red-flag-judge-human-review-queue.mjs
+    Same pattern as code-judge-human-review-queue.mjs (find-or-create a
+    fixed-name queue, skip observations already queued), but for "General
+    red flag judge v2" instead, with a different selection split: 8
+    lowest-scoring + 3 highest-scoring + 4 random (up to 15 total). The
+    split is deliberately more low-weighted than the code judge's even
+    5/5/10 split - this evaluator's scores are heavily bimodal (mostly a
+    perfect 1 for "no issues found", or 0 for a genuine red flag), so
+    "highest scoring" picks aren't especially informative here; most of
+    the review budget goes to the low-scoring observations actually worth
+    a human's attention. Adds to a single ongoing queue named "Red flag
+    judge human review". Four score configs are attached on creation:
+    "Was agent response reasonable", "General red flag judge review",
+    "Comment", "Escalate for deeper review".
 
 summarize-evaluator-comments.mjs
     Uses the Anthropic API (not just Langfuse) to build a weekly report per
@@ -459,3 +484,15 @@ WHAT WE LEARNED ALONG THE WAY (worth knowing before changing anything)
   - see summarize-evaluator-comments.mjs above for the mechanics. Any
   script that windows scores by date should window by the scored
   observation/trace's own timestamp, never the score's timestamp.
+- annotationQueues.listQueues has no server-side name filter (just
+  page/limit) - finding "does a queue named X already exist" means paging
+  through everything and matching by .name client-side. Also, a deleted
+  annotation queue's ID returns a plain 404 from getQueue and simply
+  doesn't appear in listQueues any more - there's no tombstone/soft-delete
+  visible via the API. This came up directly: two queues created earlier
+  in a session (by code-judge-human-review-queue.mjs and
+  red-flag-judge-human-review-queue.mjs) had both been manually deleted in
+  the Langfuse UI before the scripts were run again, which looked at
+  first like a bug (a "duplicate" queue got created with the same name)
+  but was actually correct behavior - the find-or-create logic legitimately
+  found nothing to reuse, since the original queues were really gone.

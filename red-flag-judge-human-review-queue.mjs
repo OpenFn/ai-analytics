@@ -18,24 +18,21 @@ async function withRetry(fn, label) {
   return null;
 }
 
-const SCORE_CONFIG_NAMES = [
-  "Was agent response reasonable",
-  "Code quality judge review",
-  "Code style judge review",
-  "Escalate for deeper review",
-  "Comment",
-];
-const SCORE_NAME = "Code quality judge v5";
+const SCORE_CONFIG_NAMES = ["Was agent response reasonable", "General red flag judge review", "Comment", "Escalate for deeper review"];
+const SCORE_NAME = "General red flag judge v2";
+const LOWEST_COUNT = 8;
+const HIGHEST_COUNT = 3;
+const RANDOM_COUNT = 4;
 
 const now = new Date();
 const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
 const fromTimestamp = oneWeekAgo.toISOString();
 const toTimestamp = now.toISOString();
-const QUEUE_NAME = "Code judge human review";
+const QUEUE_NAME = "Red flag judge human review";
 console.log(`Window: ${fromTimestamp} to ${toTimestamp}\n`);
 
 // ============================================================
-// 1. Pull every "Code quality judge v5" score in the window
+// 1. Pull every "General red flag judge v2" score in the window
 // ============================================================
 async function fetchScores(name) {
   const scores = [];
@@ -89,7 +86,7 @@ const byObs = toObservationMap(scores);
 console.log(`Observations with a "${SCORE_NAME}" score in window: ${byObs.size}`);
 
 // ============================================================
-// 2. Select 5 lowest + 5 highest + 10 random from whatever remains
+// 2. Select 8 lowest + 3 highest + 4 random from whatever remains
 // ============================================================
 const selected = new Map(); // observationId -> reasons[]
 function flag(observationId, reason) {
@@ -98,22 +95,22 @@ function flag(observationId, reason) {
   selected.get(observationId).push(reason);
 }
 
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < LOWEST_COUNT; i++) {
   const pick = pickExtreme(byObs, selected, "low");
   if (pick) flag(pick[0], `low ${SCORE_NAME} (${pick[1].value})`);
 }
-for (let i = 0; i < 5; i++) {
+for (let i = 0; i < HIGHEST_COUNT; i++) {
   const pick = pickExtreme(byObs, selected, "high");
   if (pick) flag(pick[0], `high ${SCORE_NAME} (${pick[1].value})`);
 }
 
 const remaining = [...byObs.entries()].filter(([obsId]) => !selected.has(obsId));
-const randomPicks = shuffle(remaining).slice(0, 10);
+const randomPicks = shuffle(remaining).slice(0, RANDOM_COUNT);
 for (const [obsId, info] of randomPicks) {
   flag(obsId, `random pick (${SCORE_NAME} ${info.value})`);
 }
 
-console.log(`\nObservations selected: ${selected.size} (target up to 20: 5 low + 5 high + 10 random)`);
+console.log(`\nObservations selected: ${selected.size} (target up to ${LOWEST_COUNT + HIGHEST_COUNT + RANDOM_COUNT}: ${LOWEST_COUNT} low + ${HIGHEST_COUNT} high + ${RANDOM_COUNT} random)`);
 for (const [id, reasons] of selected) console.log(`  - ${id}: ${reasons.join(", ")}`);
 
 if (selected.size === 0) {
@@ -156,7 +153,7 @@ if (queue) {
 } else {
   queue = await langfuse.api.annotationQueues.createQueue({
     name: QUEUE_NAME,
-    description: `Ongoing human review sample by "${SCORE_NAME}" score, 5 lowest + 5 highest + 10 random added each run.`,
+    description: `Ongoing human review sample by "${SCORE_NAME}" score, ${LOWEST_COUNT} lowest + ${HIGHEST_COUNT} highest + ${RANDOM_COUNT} random added each run.`,
     scoreConfigIds,
   });
   console.log(`Created queue: id=${queue.id} name=${queue.name}`);
