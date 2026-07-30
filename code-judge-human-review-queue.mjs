@@ -31,7 +31,7 @@ const now = new Date();
 const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
 const fromTimestamp = oneWeekAgo.toISOString();
 const toTimestamp = now.toISOString();
-const QUEUE_NAME = "Code judge human review";
+const QUEUE_NAME = "Code judge human review queue";
 console.log(`Window: ${fromTimestamp} to ${toTimestamp}\n`);
 
 // ============================================================

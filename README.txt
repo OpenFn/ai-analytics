@@ -110,8 +110,8 @@ code-judge-human-review-queue.mjs
     whatever's left in the pool (up to 20 total; fewer if the pool is
     smaller than that).
 
-    Adds to a single ongoing queue named "Code judge human review" (no
-    date range in the name) rather than creating a new dated queue every
+    Adds to a single ongoing queue named "Code judge human review queue"
+    (no date range in the name) rather than creating a new dated queue every
     run. Before creating anything, it pages through every queue
     (listQueues has no server-side name filter, so this is a client-side
     match) looking for one with that exact name, and reuses it if found -
@@ -142,7 +142,7 @@ red-flag-judge-human-review-queue.mjs
     "highest scoring" picks aren't especially informative here; most of
     the review budget goes to the low-scoring observations actually worth
     a human's attention. Adds to a single ongoing queue named "Red flag
-    judge human review". Four score configs are attached on creation:
+    judge human review queue". Four score configs are attached on creation:
     "Was agent response reasonable", "General red flag judge review",
     "Comment", "Escalate for deeper review".
 
