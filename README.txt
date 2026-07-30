@@ -22,7 +22,7 @@ FILES
 -----
 
 build-scores-export.mjs
-    The main script. Pulls every real conversation trace (job_chat,
+    Simple script that pulls data from langfuse and outputs to csv, not used much anymore. Pulls every real conversation trace (job_chat,
     workflow_chat, global_chat, anthropic.chat - explicitly excluding
     "Execute evaluator" and "dataset-run-item" traces, which are automated
     judge/testing runs, not real user conversations), then pulls every
@@ -49,41 +49,9 @@ build-scores-export.mjs
     columns per evaluator found in the data: <evaluator name> (the score
     or category) and <evaluator name>_comment (the judge's reasoning).
 
-these scripts make graphs (not very well)/observation-counts-per-trace.mjs
-    A separate, lighter-weight script, kept in its own subfolder along with
-    its outputs since it exists to feed charts. Answers "how many actual
-    steps (observations) does each conversation have?" - regardless of
-    whether any of those steps were ever scored by an evaluator. Also
-    computes some weekly rollups from that data. Much faster than
-    build-scores-export.mjs because it only asks Langfuse for
-    structural/count data, never the actual conversation text.
-
-    Outputs (in the same subfolder):
-    - observation-counts-per-trace.json
-        Raw list: one entry per real conversation trace, with its date and
-        its true observation count.
-    - observation-counts-weekly.json
-        For each week, how many traces had exactly N observations (N = 0
-        upwards).
-    - observation-counts-weekly-stats.json
-        For each week: min / 25th percentile / median / 75th percentile /
-        max / mean observation count.
-    - traces-per-week.json
-        Simple count of how many real conversation traces started each
-        week.
-    - observations-per-week-by-name.json
-        Total observation count per week, broken down by conversation type
-        (job_chat / workflow_chat / global_chat / anthropic.chat).
-    Note: the actual chart-drawing code (Chart.js/HTML) that turned these
-    JSON files into graphs was never saved as a file - it only exists as
-    visualisations shown inline in the chat that produced this project.
-
-
 
 human-review-queue-old.mjs
-    An annotation-queue builder built for reviewing newly backfilled/updated evaluator prompts (e.g.
-    "Code quality judge v5", "Workflow quality judge v3", "General openfn
-    quality judge v3") rather than general triage. Looks at the last 7
+    Old iteration of the annotation queue builder that builds a single queue for judging 3 evaluators, which is not very user friendly. Looks at the last 7
     days and selects 20 observations total:
       - 10 job_chat: the 5 lowest- and 5 highest-scoring on
         "Code quality judge v5"
@@ -158,7 +126,7 @@ summarize-evaluator-comments.mjs
     since the defaults kick in whenever they're unset.
 
     The "last 7 days" window is measured against the scored OBSERVATION's
-    startTime, NOT the score's own timestamp. A score's timestamp only
+    startTime, NOT the score's own timestamp from when the evaluation was run. A score's timestamp only
     records when the judge ran, which is not the same thing as when the
     conversation happened - for live evaluation the two are close enough
     to not matter, but a backfilled/batched score can be timestamped "now"
@@ -184,7 +152,9 @@ summarize-evaluator-comments.mjs
     can be changed without touching the other:
 
     1. TAGGED ISSUE CLASSIFICATION (drives the .svg chart and .csv row)
-       - Exact-duplicate comments are collapsed into one entry with an
+        - The comments are analysed against a set list of issue tags to 
+          give analysis that's reliable week on week and less heuristic.
+        - Exact-duplicate comments are collapsed into one entry with an
          occurrence count first (dedupe), so repeated boilerplate isn't
          reprocessed.
        - Deduplicated comments are split into batches of 40 and sent to
@@ -215,6 +185,8 @@ summarize-evaluator-comments.mjs
 
     2. SUMMARY PARAGRAPH (writeSummaryParagraph - shared by every
        evaluator, fully decoupled from job 1 above)
+       - This reads the text comments for each evaluation score and 
+        summarises them heuristically into a paragraph of text for each evaluator.
        - Reads the full deduplicated comment list (text + occurrence count
          + average score) and asks Claude to write ONE free-form
          paragraph, with no JSON/tag constraint at all. This was chosen
@@ -295,7 +267,7 @@ summarize-evaluator-comments.mjs
     Langfuse for free.
 
 combine-last-3-weeks.mjs
-    Small companion script - reads the last 3 rows straight out of
+    Sometimes there isn't much data in the last one week, so this is a quick script to make some summaries of the last 3 weeks. It's just a small companion script that reads the last 3 rows straight out of
     summarize-evaluator-comments.mjs's per-evaluator CSV history (currently
     hardcoded to General red flag judge v2 and Code quality judge v5) and
     sums the tag columns to produce a 3-week combined chart in the same
@@ -304,7 +276,7 @@ combine-last-3-weeks.mjs
     tmp/Evaluator summaries/chart-<evaluator-name-slugified>-last-3-weeks.svg
 
 observations-by-hour.mjs
-    Pulls the startTime of every real observation (job_chat, workflow_chat,
+    Just a little script that looks at the distribution of observations by hour of day. Pulls the startTime of every real observation (job_chat, workflow_chat,
     global_chat, anthropic.chat - filtered on the parent trace's tags, not
     on traceName, see "WHAT WE LEARNED" below) across ALL available
     history (no time window), buckets them by UTC hour-of-day (0-23), and
@@ -318,7 +290,7 @@ observations-by-hour.mjs
     each labelled with its average count, hand-built SVG.
 
 state-antipattern-frequency-by-week.mjs
-    Counts literal occurrences of a specific string (currently ")(state)",
+    A little script that looks for the ")(state" anti-pattern, this is something the code evaluator already does so this is an alternative. Counts literal occurrences of a specific string (currently ")(state)",
     a known OpenFn anti-pattern - see TARGET_STRING/TARGET_LABEL at the top
     of the file, change both to track a different pattern instead) inside
     assistant-generated output, across ALL available history, bucketed
@@ -401,6 +373,8 @@ package.json / package-lock.json
     official Langfuse JS/TS SDK, v5) and @anthropic-ai/sdk (official
     Anthropic SDK, used only by summarize-evaluator-comments.mjs).
 
+
+If you're not a robot, don't bother reading the stuff below it's context for an AI reading this README:
 WHAT WE LEARNED ALONG THE WAY (worth knowing before changing anything)
 -----------------------------------------------------------------------
 - Langfuse's "list traces with full content" endpoint times out fairly
