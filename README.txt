@@ -313,8 +313,8 @@ state-antipattern-frequency-by-week.mjs
     each labelled with its count and date (rotated 45 degrees to fit).
 
 analysis-by-version.mjs
-    Tracks how evaluator scores, latency, and conversation-type mix change
-    across assistant releases - the "release" value Langfuse attaches to
+    This is a useful little script that tracks how evaluator scores, latency, and conversation-type mix change
+    across assistant releases and makes a collection of svg graphs. The "release" value Langfuse attaches to
     every trace/observation, confirmed to be exactly the same value as
     resourceAttributes.langfuse.release in the raw OpenTelemetry metadata
     (so there's no need to dig into metadata directly; trace.release
@@ -326,8 +326,7 @@ analysis-by-version.mjs
     Code quality judge v5, General red flag judge v2), joined back to
     their trace via score.subject.traceId. Traces with no release value
     recorded (mostly everything before ~2026-06-29, when this metadata
-    started being set) are skipped entirely, since they can't be placed on
-    a version axis.
+    started being set) are skipped entirely as version data wasn't added to langfuse until then.
 
     Outputs, both in tmp/:
     - scores-by-assistant-version.csv
